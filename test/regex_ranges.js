@@ -31,8 +31,12 @@ const regexString = mulitlineRegex`
 \s*
     (?:                                     // Optional argument:
         ,\s*                                //  Comma
-        (?:lines\s*:\s*)?                   //  Optional key word
-        (?<lines>\d+)                       //  Capture integer number of lines -> group name "lines"
+        (?:
+            (?:lines\s*:\s*)?               //  Optional key word
+            (?<lines>\d+)                   //  Capture integer number of lines -> group name "lines"
+            |
+            (?<marker>start|end)            //  ... OR a paired start/end marker -> group name "marker"
+        )
     )?
 \s*
 }                                           // End of color block arguments
@@ -50,12 +54,18 @@ const getColorBlockRanges = (match) => {
     const colorValue = match.groups.color;
     const color = [start + colorOffset, start + colorOffset + colorValue.length];
     let lines;
+    let marker;
     if (match.groups.lines) {
         const afterColor = colorOffset + colorValue.length;
         const linesOffset = afterColor + /\d+/.exec(text.slice(afterColor)).index;
         lines = [start + linesOffset, start + linesOffset + match.groups.lines.length];
     }
-    return { whole, color, lines };
+    else if (match.groups.marker) {
+        const afterColor = colorOffset + colorValue.length;
+        const markerOffset = afterColor + /start|end/.exec(text.slice(afterColor)).index;
+        marker = [start + markerOffset, start + markerOffset + match.groups.marker.length];
+    }
+    return { whole, color, lines, marker };
 };
 
 const eq = (a, b) => a && b && a[0] === b[0] && a[1] === b[1];
@@ -72,6 +82,10 @@ const inputs = [
     'tab\tindent {blue}',
     '{color}',                 // named color literally "color"
     'noise 1234 {#0a0, 8}',    // digits before the block must not confuse lines
+    '{purple, start}',
+    '{purple, end}',
+    '# label {#f9e, start} trailing',
+    '{color: red, end}',
 ];
 
 let failures = 0;
@@ -87,11 +101,13 @@ for (const input of inputs) {
     const okWhole = eq(r.whole, truth.indices[0]);
     const okColor = eq(r.color, truth.indices.groups.color);
     const truthLines = truth.indices.groups.lines;
+    const truthMarker = truth.indices.groups.marker;
     const okLines = truthLines ? eq(r.lines, truthLines) : r.lines === undefined;
-    const ok = okWhole && okColor && okLines;
+    const okMarker = truthMarker ? eq(r.marker, truthMarker) : r.marker === undefined;
+    const ok = okWhole && okColor && okLines && okMarker;
     if (!ok) failures++;
     console.log(
-        `${ok ? ' ' : '✗'} whole${okWhole ? '✓' : '✗'} color${okColor ? '✓' : '✗'} lines${okLines ? '✓' : '✗'}  "${input}"`
+        `${ok ? ' ' : '✗'} whole${okWhole ? '✓' : '✗'} color${okColor ? '✓' : '✗'} lines${okLines ? '✓' : '✗'} marker${okMarker ? '✓' : '✗'}  "${input}"`
     );
 }
 

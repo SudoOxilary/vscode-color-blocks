@@ -23,8 +23,12 @@ const regexString = mulitlineRegex`
 \s*
     (?:                                     // Optional argument:
         ,\s*                                //  Comma
-        (?:lines\s*:\s*)?                   //  Optional key word
-        (?<lines>\d+)                       //  Capture integer number of lines -> group name "lines"
+        (?:
+            (?:lines\s*:\s*)?               //  Optional key word
+            (?<lines>\d+)                   //  Capture integer number of lines -> group name "lines"
+            |
+            (?<marker>start|end)            //  ... OR a paired start/end marker -> group name "marker"
+        )
     )?
 \s*
 }                                           // End of color block arguments
@@ -40,12 +44,13 @@ export interface ColorBlockRanges {
     whole: [number, number];
     color: [number, number];
     lines?: [number, number];
+    marker?: [number, number];
 }
 
 // Offsets of the whole match and the named groups, relative to the searched
 // string. The positions are deterministic from the regex structure: an opening
 // `{`, optional whitespace and `color:` keyword, the color value, then an
-// optional line count (the only digit run after the color).
+// optional line count or start/end marker (the first of either after the color).
 export const getColorBlockRanges = (match: RegExpExecArray): ColorBlockRanges => {
     const start = match.index;
     const text = match[0];
@@ -57,11 +62,16 @@ export const getColorBlockRanges = (match: RegExpExecArray): ColorBlockRanges =>
     const color: [number, number] = [start + colorOffset, start + colorOffset + colorValue.length];
 
     let lines: [number, number] | undefined;
+    let marker: [number, number] | undefined;
+    const afterColor = colorOffset + colorValue.length;
     if (match.groups!.lines) {
-        const afterColor = colorOffset + colorValue.length;
         const linesOffset = afterColor + /\d+/.exec(text.slice(afterColor))!.index;
         lines = [start + linesOffset, start + linesOffset + match.groups!.lines.length];
     }
+    else if (match.groups!.marker) {
+        const markerOffset = afterColor + /start|end/.exec(text.slice(afterColor))!.index;
+        marker = [start + markerOffset, start + markerOffset + match.groups!.marker.length];
+    }
 
-    return { whole, color, lines };
+    return { whole, color, lines, marker };
 };

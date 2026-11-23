@@ -3,27 +3,40 @@ import { getSettings } from './extension';
 
 const commands = [
     
-    // Command for adding color comments {#454,22}
+    // Command for adding color comments {#454,37}
     vscode.commands.registerCommand("color-blocks.add", () => {
         const activeEditor = vscode.window.activeTextEditor;
         if (!activeEditor) return;
+        const doc = activeEditor.document;
 
-        let insertMap: Array<number> = []; // Used to track line offsets for multiple selections
-        for (let selection of activeEditor.selections) {
-            let firstLine = Math.min(selection.end.line, selection.start.line);
+        // Process selections bottom-up so earlier insertions do not shift the
+        // line numbers of selections that have not been handled yet.
+        const selections = [...activeEditor.selections].sort((a, b) => b.start.line - a.start.line);
 
-            for (let line of insertMap)
-                if (firstLine >= line) firstLine += 1;
-            insertMap.push(firstLine);
+        for (const selection of selections) {
+            const firstLine = Math.min(selection.end.line, selection.start.line);
+            const lastLine = Math.max(selection.end.line, selection.start.line);
 
-            const nCommentLines = Math.abs(selection.end.line - selection.start.line + 1);
-            // Insert at the first non-whitespace character (a character offset, not a
-            // visual column, so tab-indented lines line up correctly).
-            let indention = activeEditor.document.lineAt(firstLine).firstNonWhitespaceCharacterIndex;
-            // Currently no supported way to call existing snippets easily and add custom args?
+            // Give both markers the same random color so the block is a single hue.
+            const color = Math.floor(Math.random() * 0x1000)
+                .toString(16)
+                .padStart(3, '0');
+
+            const startIndent = doc.lineAt(firstLine).text.match(/^\s*/)![0];
+            const endIndent = doc.lineAt(lastLine).text.match(/^\s*/)![0];
+            const lastLineEnd = doc.lineAt(lastLine).range.end;
+
+            // End marker on a new line after the last selected line.
             activeEditor.insertSnippet(
-                new vscode.SnippetString("$LINE_COMMENT ${1} {#${2:${RANDOM_HEX/(.).?(.).?(.).?/$1$2$3/}}," + nCommentLines.toString() + "}\n"),
-                new vscode.Position(firstLine, indention),
+                new vscode.SnippetString(`\n${endIndent}$LINE_COMMENT {#${color}, end}`),
+                lastLineEnd,
+                { undoStopBefore: false, undoStopAfter: false }
+            );
+
+            // Start marker on a new line before the first selected line.
+            activeEditor.insertSnippet(
+                new vscode.SnippetString(`${startIndent}$LINE_COMMENT {#${color}, start}\n`),
+                new vscode.Position(firstLine, 0),
                 { undoStopBefore: false, undoStopAfter: false }
             );
         }

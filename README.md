@@ -29,6 +29,19 @@ This extension will look for curly brackets inside comments containing at least 
 
 Color blocks work with both line comments and block comments. All lines in the comment will be part of the color block. If no number is specified after the hex color argument, then the color range will also capture any lines until an empty line.
 
+### Start / End markers
+
+Instead of counting lines, you can open and close a block with a matched pair of `start` and `end` markers. This is handy because the range follows the code as you edit it, so you never have to fix up a line count:
+
+```
+# Section start {purple, start}
+some code
+more code
+# Section end {purple, end}
+```
+
+Markers pair with the nearest unmatched marker of the same kind (nesting works), and the color of the `start` marker is used for the whole block. Markers are never auto-renumbered, since there is no line count to maintain.
+
 ![block comment example](/media/block_comments_example.png)
 
 ### Three different ways to add color blocks.

@@ -7,5 +7,23 @@
       "$LINE_COMMENT ${1} {#${2:${RANDOM_HEX/(.).?(.).?(.).?/$1$2$3/}},${3:1}}$0"
     ],
     "description": "Color a range of lines."
+  },
+  "Color Block Start": {
+    "prefix": [
+      "color block start"
+    ],
+    "body": [
+      "$LINE_COMMENT ${1} {#${2:${RANDOM_HEX/(.).?(.).?(.).?/$1$2$3/}}, start}$0"
+    ],
+    "description": "Open a start/end color block."
+  },
+  "Color Block End": {
+    "prefix": [
+      "color block end"
+    ],
+    "body": [
+      "$LINE_COMMENT {#${1:${RANDOM_HEX/(.).?(.).?(.).?/$1$2$3/}}, end}$0"
+    ],
+    "description": "Close a start/end color block."
   }
 }

@@ -21,10 +21,13 @@ interface DecorationRange {
 }
 
 const safeGetLineNr = (lineNr: number, doc: vscode.TextDocument) => Math.min(lineNr, doc.lineCount - 1);
-const isLightTheme = () => (
-    vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Light ||
-    vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.HighContrastLight
-);
+// HighContrastLight (numeric value 4) isn't declared in the pinned @types/vscode,
+// so look it up dynamically and fall back to just the Light kind.
+const highContrastLight = (vscode.ColorThemeKind as unknown as Record<string, vscode.ColorThemeKind | undefined>)['HighContrastLight'];
+const isLightTheme = () => {
+    const kind = vscode.window.activeColorTheme.kind;
+    return kind === vscode.ColorThemeKind.Light || (highContrastLight !== undefined && kind === highContrastLight);
+};
 
 export class DecorationRangeHandler {
 
@@ -174,34 +177,84 @@ export class DecorationRangeHandler {
         }
     };
 
-    // Scan document for color blockS {#88f,68}
+    // Scan document for color blockS {#88f,120}
     public addNewDecorationRanges(activeEditor: vscode.TextEditor, comments: Comment[]) {
         if (!activeEditor) return; // Needed?
         const doc = activeEditor.document;
 
         if (comments.length === 0) return;
 
+        // First pass: parse every comment into a normalized entry so that paired
+        // `start`/`end` markers can be matched against each other regardless of
+        // the order they appear in the `comments` array.
+        interface Entry {
+            comment: Comment;
+            match: RegExpExecArray;
+            colorHex: string;
+            marker?: string;
+            commentStartLineNumber: number;
+            commentEndLineNumber: number;
+            matchOffset: number;
+        }
+
+        const entries: Entry[] = [];
         for (const comment of comments) {
-            // Extract arguments for this comment
             const match = colorBlockRegex.exec(comment.content);
-
-            if (!match)
-                continue;
-
-            const matchRanges = getColorBlockRanges(match);
+            if (!match) continue;
 
             const colorHex = match.groups?.color.startsWith('#')
                 ? match.groups.color
                 : toHex(match.groups?.color ?? ''); // returns undefined if argument isn't a named color
+            if (!colorHex) continue;
 
-            if (!colorHex)
+            entries.push({
+                comment,
+                match,
+                colorHex,
+                marker: match.groups?.marker,
+                commentStartLineNumber: doc.positionAt(comment.range[0]).line,
+                commentEndLineNumber: doc.positionAt(comment.range[1]).line,
+                matchOffset: comment.range[0] + comment.startDelimiter.length,
+            });
+        }
+
+        // Second pass: turn entries into decoration ranges. A `start` marker is
+        // held on a stack until its matching `end` marker closes the block, so
+        // nested blocks work and the range no longer depends on a line count.
+        const openStarts: Entry[] = [];
+        for (const entry of entries) {
+            const { comment, match, colorHex, marker, commentStartLineNumber, commentEndLineNumber, matchOffset } = entry;
+
+            if (marker === 'end') {
+                const startEntry = openStarts.pop();
+                if (!startEntry) continue; // Unmatched end marker: ignore
+
+                const matchRanges = getColorBlockRanges(startEntry.match);
+                const endLine = safeGetLineNr(commentEndLineNumber, doc);
+                this.decorationRanges.push({
+                    comment: startEntry.comment,
+                    argumentBlock: {
+                        content: startEntry.match[0],
+                        range: arrAdd(matchRanges.whole, startEntry.matchOffset) as [number, number]
+                    },
+                    hexColor: {
+                        content: startEntry.colorHex,
+                        range: arrAdd(matchRanges.color, startEntry.matchOffset) as [number, number]
+                    },
+                    nLines: undefined,
+                    commentStartLine: startEntry.commentStartLineNumber,
+                    codeStartLine: startEntry.commentEndLineNumber + 1,
+                    endLine: endLine,
+                });
                 continue;
+            }
 
-            const commentStartLineNumber = doc.positionAt(comment.range[0]).line;
-            const commentEndLineNumber = doc.positionAt(comment.range[1]).line;
+            if (marker === 'start') {
+                openStarts.push(entry);
+                continue;
+            }
 
-            const matchOffset = comment.range[0] + comment.startDelimiter.length;
-
+            const matchRanges = getColorBlockRanges(match);
             let nLinesAfterComment!: number;
             let nLines: ContentRange | undefined = undefined;
             if (match.groups!.lines) {
@@ -224,7 +277,7 @@ export class DecorationRangeHandler {
 
                 nLinesAfterComment = nLinesAfterCommentUntilEmpty;
             }
-            
+
             // Make sure endLine is not outside of document
             const endLine = safeGetLineNr(commentEndLineNumber + nLinesAfterComment, doc);
 

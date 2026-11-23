@@ -8,6 +8,12 @@
 		"sourceMap": true,
 		"rootDir": "src",
 		"strict": true,   /* enable all strict type-checking options */
+		/* Only auto-include the type packages this project actually uses.
+		 * Without this, TypeScript walks up the directory tree and pulls in every
+		 * @types package it finds (e.g. a stray $HOME/node_modules/@types/lodash),
+		 * some of which use syntax the pinned TypeScript cannot parse. */
+		"types": ["node", "vscode"],
+		"skipLibCheck": true,   /* Don't type-check dependencies' declaration files. */
 		/* Additional Checks */
 		// "noImplicitReturns": true, /* Report error when not all code paths in function return a value. */
 		// "noFallthroughCasesInSwitch": true, /* Report errors for fallthrough cases in switch statement. */
